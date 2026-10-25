@@ -59,3 +59,11 @@ From this directory:
 ```
 
 The APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
+
+Without vcpkg (for example on Linux), build static arm64 copies of zlib, libpng,
+Opus, SDL2, OpenSSL and curl into one install prefix and pass it to Gradle:
+
+```sh
+java -cp gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain \
+    assembleDebug -PringRacersDepsPrefix=/opt/rrdeps/arm64
+```

@@ -35,6 +35,21 @@ def gameDataFiles = [
     "unlocks.pk3"
 ]
 
+// Native dependencies come from vcpkg at C:/vcpkg by default. Pass
+// -PringRacersDepsPrefix=/path/to/arm64/prefix to use prebuilt static libraries instead.
+def depsPrefix = project.findProperty("ringRacersDepsPrefix")
+def dependencyArguments = depsPrefix ? [
+    "-DCMAKE_PREFIX_PATH=${depsPrefix}",
+    "-DCMAKE_FIND_ROOT_PATH=${depsPrefix}",
+    "-DOPENSSL_USE_STATIC_LIBS=ON"
+] : [
+    "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake",
+    "-DVCPKG_CHAINLOAD_TOOLCHAIN_FILE=C:/Android/sdk/ndk/26.3.11579264/build/cmake/android.toolchain.cmake",
+    "-DVCPKG_TARGET_TRIPLET=arm64-android",
+    "-DVCPKG_HOST_TRIPLET=x64-mingw-dynamic",
+    "-DVCPKG_MANIFEST_MODE=OFF"
+]
+
 def requiredAssets = [
     new File(installRoot, "bios.pk3"),
     new File(installRoot, "gamecontrollerdb.txt")
@@ -104,11 +119,7 @@ android {
 
         externalNativeBuild {
             cmake {
-                arguments "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake",
-                    "-DVCPKG_CHAINLOAD_TOOLCHAIN_FILE=C:/Android/sdk/ndk/26.3.11579264/build/cmake/android.toolchain.cmake",
-                    "-DVCPKG_TARGET_TRIPLET=arm64-android",
-                    "-DVCPKG_HOST_TRIPLET=x64-mingw-dynamic",
-                    "-DVCPKG_MANIFEST_MODE=OFF",
+                arguments(*dependencyArguments,
                     "-DSRB2_CONFIG_ENABLE_WEBM_MOVIES=OFF",
                     "-DSRB2_CONFIG_ENABLE_DISCORDRPC=OFF",
                     "-DSRB2_CONFIG_HWRENDER=OFF",
@@ -117,7 +128,7 @@ android {
                     "-DSRB2_CONFIG_USEASM=OFF",
                     "-DSRB2_SDL2_EXE_NAME=main",
                     "-DANDROID_STL=c++_shared",
-                    "-DCMAKE_BUILD_TYPE=Release"
+                    "-DCMAKE_BUILD_TYPE=Release")
                 cFlags "-U_FORTIFY_SOURCE", "-D_FORTIFY_SOURCE=0", "-O3", "-march=armv8-a+crc+crypto"
                 cppFlags "-U_FORTIFY_SOURCE", "-D_FORTIFY_SOURCE=0", "-O3", "-march=armv8-a+crc+crypto"
             }
