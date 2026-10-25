@@ -1,10 +1,15 @@
 package org.kartkrew.ringracers;
 
+import android.Manifest;
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
@@ -19,10 +24,16 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
+    private static final int REQUEST_STORAGE = 1;
+
     private final ExecutorService extractor = Executors.newSingleThreadExecutor();
     private ProgressBar progress;
     private TextView status;
     private Button retry;
+    private Button grantStorage;
+    private Button skipStorage;
+    private boolean waitingForStorage;
+    private boolean preparing;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -31,7 +42,28 @@ public final class MainActivity extends Activity {
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(createLoadingView());
-        prepareGame();
+        if (AssetExtractor.hasSharedStorageAccess(this)) {
+            prepareGame();
+        } else {
+            askForStorage();
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Coming back from the "All files access" settings screen.
+        if (waitingForStorage && AssetExtractor.hasSharedStorageAccess(this)) {
+            prepareGame();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_STORAGE && AssetExtractor.hasSharedStorageAccess(this)) {
+            prepareGame();
+        }
     }
 
     @Override
@@ -87,10 +119,67 @@ public final class MainActivity extends Activity {
         retryParams.topMargin = dp(20);
         root.addView(retry, retryParams);
 
+        grantStorage = new Button(this);
+        grantStorage.setText("Allow storage access");
+        grantStorage.setAllCaps(false);
+        grantStorage.setVisibility(View.GONE);
+        grantStorage.setOnClickListener(view -> requestStorage());
+        LinearLayout.LayoutParams grantParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, dp(48));
+        grantParams.topMargin = dp(20);
+        root.addView(grantStorage, grantParams);
+
+        skipStorage = new Button(this);
+        skipStorage.setText("Continue without");
+        skipStorage.setAllCaps(false);
+        skipStorage.setVisibility(View.GONE);
+        skipStorage.setOnClickListener(view -> prepareGame());
+        LinearLayout.LayoutParams skipParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, dp(48));
+        skipParams.topMargin = dp(8);
+        root.addView(skipStorage, skipParams);
+
         return root;
     }
 
+    private void askForStorage() {
+        waitingForStorage = true;
+        progress.setVisibility(View.GONE);
+        retry.setVisibility(View.GONE);
+        status.setText("To install addons and keep your saves in an easy-to-find place, "
+            + "Ring Racers needs access to your storage.\n\n"
+            + "Your files will go in Internal storage/RingRacers, "
+            + "with mods in Internal storage/RingRacers/addons.");
+        grantStorage.setVisibility(View.VISIBLE);
+        skipStorage.setVisibility(View.VISIBLE);
+    }
+
+    private void requestStorage() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // Android 11+: shared storage requires the "All files access" special permission,
+            // which can only be granted from the system settings screen.
+            try {
+                startActivity(new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    Uri.parse("package:" + getPackageName())));
+            } catch (ActivityNotFoundException exception) {
+                startActivity(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+            }
+        } else {
+            requestPermissions(new String[]{
+                Manifest.permission.READ_EXTERNAL_STORAGE,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
+            }, REQUEST_STORAGE);
+        }
+    }
+
     private void prepareGame() {
+        if (preparing) {
+            return;
+        }
+        preparing = true;
+        waitingForStorage = false;
+        grantStorage.setVisibility(View.GONE);
+        skipStorage.setVisibility(View.GONE);
         retry.setVisibility(View.GONE);
         progress.setVisibility(View.VISIBLE);
         status.setText("Preparing game data");
@@ -111,6 +200,7 @@ public final class MainActivity extends Activity {
                 });
             } catch (IOException exception) {
                 runOnUiThread(() -> {
+                    preparing = false;
                     status.setText(exception.getMessage());
                     progress.setVisibility(View.GONE);
                     retry.setVisibility(View.VISIBLE);

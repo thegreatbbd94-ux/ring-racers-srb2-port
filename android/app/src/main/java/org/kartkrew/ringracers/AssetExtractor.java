@@ -1,7 +1,10 @@
 package org.kartkrew.ringracers;
 
+import android.Manifest;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.content.res.AssetManager;
+import android.os.Build;
 import android.os.Environment;
 
 import java.io.BufferedInputStream;
@@ -75,19 +78,94 @@ final class AssetExtractor {
     }
 
     static File prepareUserHome(Context context) throws IOException {
-        File storageRoot = Environment.getExternalStorageDirectory();
-        if (storageRoot == null || !storageRoot.canWrite()) {
-            storageRoot = context.getExternalFilesDir(null);
-        }
-        if (storageRoot == null) {
-            storageRoot = context.getFilesDir();
-        }
-
+        File storageRoot = userStorageRoot(context);
         File ringRacersDir = new File(storageRoot, "RingRacers");
         File addonsDir = new File(ringRacersDir, "addons");
-        ringRacersDir.mkdirs();
-        addonsDir.mkdirs();
+        if (!addonsDir.mkdirs() && !addonsDir.isDirectory()) {
+            throw new IOException("Could not create " + addonsDir);
+        }
+        migrateLegacyHome(context, ringRacersDir);
         return storageRoot;
+    }
+
+    // True when the app may write to shared storage (/sdcard), which is what makes
+    // /sdcard/RingRacers/addons visible in file managers.
+    static boolean hasSharedStorageAccess(Context context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return Environment.isExternalStorageManager();
+        }
+        return context.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            == PackageManager.PERMISSION_GRANTED;
+    }
+
+    // The -home directory passed to the game; the game appends "RingRacers" to it.
+    static File userStorageRoot(Context context) {
+        if (hasSharedStorageAccess(context)) {
+            File sharedRoot = Environment.getExternalStorageDirectory();
+            if (sharedRoot != null && sharedRoot.canWrite()) {
+                return sharedRoot;
+            }
+        }
+        File appExternal = context.getExternalFilesDir(null);
+        if (appExternal != null) {
+            return appExternal;
+        }
+        return context.getFilesDir();
+    }
+
+    // Older builds kept configs and saves elsewhere: files/user/.ringracers (up to 2.4-android-4)
+    // or the hidden Android/data fallback (2.4-android-5 without storage access).
+    // Copy them over once so nobody loses their progress.
+    private static void migrateLegacyHome(Context context, File ringRacersDir) {
+        File appExternal = context.getExternalFilesDir(null);
+        File[] legacyHomes = {
+            new File(context.getFilesDir(), "user/.ringracers"),
+            appExternal != null ? new File(appExternal, "RingRacers") : null
+        };
+        for (File legacyHome : legacyHomes) {
+            if (legacyHome == null || legacyHome.equals(ringRacersDir)) {
+                continue;
+            }
+            File[] legacyFiles = legacyHome.listFiles();
+            File migratedMarker = new File(legacyHome, ".migrated");
+            if (legacyFiles == null || migratedMarker.exists()
+                    || !new File(legacyHome, "ringconfig.cfg").exists()
+                    || new File(ringRacersDir, "ringconfig.cfg").exists()) {
+                continue;
+            }
+            try {
+                copyRecursively(legacyHome, ringRacersDir);
+                writeText(migratedMarker, ringRacersDir.getAbsolutePath());
+            } catch (IOException ignored) {
+                // Not fatal: the game simply starts with fresh data.
+            }
+        }
+    }
+
+    private static void copyRecursively(File source, File destination) throws IOException {
+        if (source.isDirectory()) {
+            if (!destination.mkdirs() && !destination.isDirectory()) {
+                throw new IOException("Could not create " + destination);
+            }
+            File[] children = source.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    copyRecursively(child, new File(destination, child.getName()));
+                }
+            }
+            return;
+        }
+        if (destination.exists()) {
+            return;
+        }
+        byte[] buffer = new byte[64 * 1024];
+        try (FileInputStream input = new FileInputStream(source);
+             FileOutputStream output = new FileOutputStream(destination)) {
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                output.write(buffer, 0, read);
+            }
+        }
     }
 
     private static boolean isCurrent(File marker, File gameDirectory) {

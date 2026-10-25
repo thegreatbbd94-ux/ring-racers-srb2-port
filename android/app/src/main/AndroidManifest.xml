@@ -36,6 +36,7 @@
 
     <application
         android:allowBackup="false"
+        android:requestLegacyExternalStorage="true"
         android:extractNativeLibs="true"
         android:hardwareAccelerated="true"
         android:icon="@drawable/icon"

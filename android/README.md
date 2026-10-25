@@ -11,9 +11,21 @@ installation. It does not package `ringdata.dat`, `ringprofiles.prf`,
 `ringconfig.cfg`, backups, replays, logs, addons, passwords, or server data.
 
 On first launch, core assets are extracted to the app-private `game` directory.
-New profiles, settings, progress, and replays are created separately below the
-app-private `user/.ringracers` directory. Uninstalling the app clears that new
-Android data.
+
+## Saves and addons
+
+On first launch the app asks for storage access (on Android 11+ this opens the
+"All files access" settings page; turn it on and go back to the game). With
+access granted, profiles, settings, progress, and replays live in
+`Internal storage/RingRacers`, and mods go in `Internal storage/RingRacers/addons`.
+These folders are visible in any file manager and survive uninstalling the app.
+
+If you choose "Continue without", the game uses the app-specific folder
+`Android/data/org.kartkrew.ringracers/files/RingRacers` instead, which many file
+managers on Android 11+ cannot open. You can grant access later from the app's
+settings and your data is copied over on the next launch.
+
+Saves from older builds (`files/user/.ringracers`) are copied over automatically.
 
 ## Touch controls
 
